@@ -27,6 +27,26 @@ concept Streamable = requires(std::ostream &os, T a) {
  * This class represents a page in a database. It provides methods for inserting data into the page,
  * retrieving data from the page, and checking if the page contains a given index. It also provides
  * methods for checking if the page is empty, if it fits a given size, and for clearing the page.
+ *
+ * Each page is divided into three regions: the header region, the offset region, and the data region.
+ * The header region is a struct that contains the following fields:
+ * - free_region_start: The offset to the start of the free space in the data region.
+ * - free_region_end: The offset to the end of the free space in the data region.
+ *
+ * The offset region is an array of offsets that point to the start of each data entry in the data region.
+ * Each offset is a two-byte value that points to the start of a data entry in the data region.
+ *
+ * The data region contains the actual data entries. Each data entry is stored as a two-byte length followed by the data.
+ *
+ * The following diagram shows the layout of a page:
+ * +-----------------+-----------------+------------------+---------------+
+ * | Header Region   | Offset Region   | Unused Space     | Data Region   |
+ * +-----------------+-----------------+------------------+---------------+
+ *
+ * By pointing to offsets in the data region, the page can store variable-length data entries efficiently, without
+ * the need to move data around when inserting or deleting entries. However, this design has the drawback that
+ * when data is removed, the page may become fragmented, with unused space scattered throughout the data region.
+ * This can be mitigated by periodically reorganizing the data in the page to remove the fragmentation.
  */
 template<size_t PageSize = 16384>
 class page {
@@ -38,7 +58,9 @@ public:
     using view_type = std::span<value_type>;
     using const_view = std::span<const_value>;
 
+    // Offset used for intra-page references
     using intra_offset_t = std::conditional_t<page_size <= 16384, uint16_t, uint32_t>;
+    // Offset used for inter-page references
     using inter_offset_t = uint32_t;
 
     /**
@@ -111,7 +133,6 @@ public:
      * @throws std::bad_alloc If the data does not fit in the page.
      */
     template<Streamable T>
-    // require non-string type
         requires(not std::same_as<T, std::string> and not std::same_as<T, std::string_view> and not std::same_as<T, const char *>)
     size_t insert(T data) {
         std::ostringstream os;
