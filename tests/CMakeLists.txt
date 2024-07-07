@@ -13,3 +13,4 @@ endmacro()
 
 # create tests
 create_test(test_page test_page.cpp page)
+create_test(test_lru test_lru.cpp lru)
